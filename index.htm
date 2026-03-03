@@ -183,7 +183,7 @@
 
         charCards.forEach(card => {
             card.onclick = (e) => {
-                e.stopPropagation(); // Запобігаємо конфлікту з тач-подіями
+                e.stopPropagation(); 
                 charCards.forEach(c => c.classList.remove('selected'));
                 card.classList.add('selected');
                 selectedSrc = card.dataset.img;
@@ -273,7 +273,7 @@
 
         function initGame() {
             score = 0;
-            gameSpeed = 4.5;
+            gameSpeed = 8.5;
             stack = [];
             debris = [];
             cameraY = 0;
@@ -289,8 +289,10 @@
             const lastBlock = stack[stack.length - 1];
             const newY = lastBlock.y - blockHeight;
             currentBlock = new Block(0, newY, lastBlock.width, gameSpeed);
+            
+            // НОВЕ: Камера слідує за верхівкою, тримаючи її в центрі екрана
             if (newY < canvas.height / 2) {
-                targetCameraY += blockHeight;
+                targetCameraY = newY - canvas.height / 2;
             }
         }
 
@@ -352,14 +354,11 @@
             requestAnimationFrame(animate);
         }
 
-        // ВИПРАВЛЕННЯ ДЛЯ МОБІЛЬНИХ:
         window.addEventListener('touchstart', (e) => {
-            // Якщо гра запущена — обробляємо клік і блокуємо стандартні дії (скрол тощо)
             if (state === 'PLAYING') {
                 e.preventDefault();
                 handleTap();
             }
-            // Якщо ми в меню — нічого не блокуємо, щоб кнопки працювали
         }, { passive: false });
 
         window.addEventListener('mousedown', (e) => {
@@ -369,5 +368,4 @@
         animate();
     </script>
 </body>
-
 </html>
