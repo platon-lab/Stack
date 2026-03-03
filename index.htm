@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stack Hero</title>
+    <style>
+        :root {
+            --primary: #6c5ce7;
+            --bg: #1a1a2e;
+            --text: #ffffff;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            touch-action: none;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #menu {
+            pointer-events: auto;
+            background: rgba(26, 26, 46, 0.95);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            transition: opacity 0.5s ease;
+        }
+
+        h1 {
+            color: var(--text);
+            font-size: 3rem;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px var(--primary);
+        }
+
+        .char-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+            padding: 10px;
+        }
+
+        .char-card {
+            width: 80px;
+            height: 80px;
+            border: 3px solid transparent;
+            border-radius: 12px;
+            cursor: pointer;
+            overflow: hidden;
+            transition: transform 0.2s, border-color 0.2s;
+            background: #2d3436;
+        }
+
+        .char-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .char-card.selected {
+            border-color: var(--primary);
+            transform: scale(1.1);
+            box-shadow: 0 0 15px var(--primary);
+        }
+
+        .btn {
+            pointer-events: auto;
+            padding: 15px 50px;
+            font-size: 1.5rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4);
+            transition: transform 0.2s;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        #score-container {
+            position: absolute;
+            top: 40px;
+            font-size: 4rem;
+            font-weight: bold;
+            color: var(--text);
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        #game-over {
+            pointer-events: auto;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(0,0,0,0.8);
+            padding: 30px;
+            border-radius: 20px;
+            color: white;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="menu">
+            <h1>STACK HERO</h1>
+            <div class="char-grid" id="charGrid">
+                <div class="char-card selected" data-img="Tito.png"><img src="Tito.png" alt="Tito"></div>
+                <div class="char-card" data-img="Smartik.png"><img src="Smartik.png" alt="Smartik"></div>
+                <div class="char-card" data-img="Junior.png"><img src="Junior.png" alt="Junior"></div>
+                <div class="char-card" data-img="Fil.png"><img src="Fil.png" alt="Fil"></div>
+                <div class="char-card" data-img="Milka.png"><img src="Milka.png" alt="Milka"></div>
+            </div>
+            <button class="btn" onclick="startGame()">PLAY</button>
+        </div>
+
+        <div id="score-container">0</div>
+
+        <div id="game-over">
+            <h2>КІНЕЦЬ ГРИ</h2>
+            <p id="final-score">Score: 0</p>
+            <button class="btn" onclick="resetGame()">RESTART</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElem = document.getElementById('score-container');
+        const menu = document.getElementById('menu');
+        const gameOverScreen = document.getElementById('game-over');
+        const finalScoreElem = document.getElementById('final-score');
+        const charCards = document.querySelectorAll('.char-card');
+
+        let state = 'MENU';
+        let score = 0;
+        let cameraY = 0;
+        let targetCameraY = 0;
+        let heroImg = new Image();
+        let selectedSrc = 'Tito.png';
+
+        const blockHeight = 40;
+        const initialWidth = 200;
+        let stack = [];
+        let debris = [];
+        let currentBlock = null;
+        let gameSpeed = 2;
+
+        charCards.forEach(card => {
+            card.onclick = (e) => {
+                e.stopPropagation(); // Запобігаємо конфлікту з тач-подіями
+                charCards.forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                selectedSrc = card.dataset.img;
+            };
+        });
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Block {
+            constructor(x, y, width, speed, moving = true) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.speed = speed;
+                this.moving = moving;
+                this.dir = Math.random() > 0.5 ? 1 : -1;
+            }
+
+            update() {
+                if (this.moving) {
+                    this.x += this.speed * this.dir;
+                    if (this.x + this.width > canvas.width || this.x < 0) {
+                        this.dir *= -1;
+                    }
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.beginPath();
+                ctx.roundRect(this.x, this.y - cameraY, this.width, blockHeight, 5);
+                ctx.clip();
+                ctx.drawImage(heroImg, this.x, this.y - cameraY, this.width, blockHeight);
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.strokeRect(this.x, this.y - cameraY, this.width, blockHeight);
+                ctx.restore();
+            }
+        }
+
+        class Debris {
+            constructor(x, y, width) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.vy = 0;
+                this.gravity = 0.6;
+                this.rotation = (Math.random() - 0.5) * 0.1;
+                this.angle = 0;
+            }
+
+            update() {
+                this.vy += this.gravity;
+                this.y += this.vy;
+                this.angle += this.rotation;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x + this.width/2, this.y - cameraY + blockHeight/2);
+                ctx.rotate(this.angle);
+                ctx.beginPath();
+                ctx.roundRect(-this.width/2, -blockHeight/2, this.width, blockHeight, 3);
+                ctx.clip();
+                ctx.drawImage(heroImg, -this.width/2, -blockHeight/2, this.width, blockHeight);
+                ctx.restore();
+            }
+        }
+
+        function startGame() {
+            heroImg.src = selectedSrc;
+            heroImg.onload = () => {
+                menu.style.opacity = '0';
+                setTimeout(() => {
+                    menu.style.display = 'none';
+                    state = 'PLAYING';
+                    scoreElem.style.opacity = '1';
+                    initGame();
+                }, 500);
+            };
+        }
+
+        function initGame() {
+            score = 0;
+            gameSpeed = 8.5;
+            stack = [];
+            debris = [];
+            cameraY = 0;
+            targetCameraY = 0;
+            scoreElem.innerText = score;
+            const baseWidth = initialWidth;
+            const baseX = (canvas.width - baseWidth) / 2;
+            stack.push(new Block(baseX, canvas.height - 100, baseWidth, 0, false));
+            spawnBlock();
+        }
+
+        function spawnBlock() {
+            const lastBlock = stack[stack.length - 1];
+            const newY = lastBlock.y - blockHeight;
+            currentBlock = new Block(0, newY, lastBlock.width, gameSpeed);
+            if (newY < canvas.height / 2) {
+                targetCameraY += blockHeight;
+            }
+        }
+
+        function handleTap() {
+            if (state !== 'PLAYING' || !currentBlock) return;
+            const lastBlock = stack[stack.length - 1];
+            const diff = currentBlock.x - lastBlock.x;
+            const absDiff = Math.abs(diff);
+            if (absDiff >= lastBlock.width) {
+                gameOver();
+                return;
+            }
+            const newWidth = lastBlock.width - absDiff;
+            const sliceX = diff > 0 ? currentBlock.x + newWidth : currentBlock.x - absDiff;
+            debris.push(new Debris(sliceX, currentBlock.y, absDiff));
+            currentBlock.width = newWidth;
+            if (diff < 0) currentBlock.x = lastBlock.x;
+            currentBlock.moving = false;
+            stack.push(currentBlock);
+            score++;
+            scoreElem.innerText = score;
+            gameSpeed += 0.1;
+            spawnBlock();
+        }
+
+        function gameOver() {
+            state = 'GAMEOVER';
+            finalScoreElem.innerText = `Score: ${score}`;
+            gameOverScreen.style.display = 'flex';
+        }
+
+        function resetGame() {
+            gameOverScreen.style.display = 'none';
+            initGame();
+            state = 'PLAYING';
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            cameraY += (targetCameraY - cameraY) * 0.1;
+            const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            grad.addColorStop(0, '#2d3436');
+            grad.addColorStop(1, '#1a1a2e');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (state === 'PLAYING' || state === 'GAMEOVER') {
+                stack.forEach(b => b.draw());
+                if (currentBlock && state === 'PLAYING') {
+                    currentBlock.update();
+                    currentBlock.draw();
+                }
+                debris.forEach((d, index) => {
+                    d.update();
+                    d.draw();
+                    if (d.y - cameraY > canvas.height) debris.splice(index, 1);
+                });
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // ВИПРАВЛЕННЯ ДЛЯ МОБІЛЬНИХ:
+        window.addEventListener('touchstart', (e) => {
+            // Якщо гра запущена — обробляємо клік і блокуємо стандартні дії (скрол тощо)
+            if (state === 'PLAYING') {
+                e.preventDefault();
+                handleTap();
+            }
+            // Якщо ми в меню — нічого не блокуємо, щоб кнопки працювали
+        }, { passive: false });
+
+        window.addEventListener('mousedown', (e) => {
+            if (state === 'PLAYING') handleTap();
+        });
+
+        animate();
+    </script>
+</body>
+</html>
